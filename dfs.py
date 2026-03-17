@@ -42,7 +42,7 @@ def visualize_step(grid: List[List[str]], r: int, c: int):
     if grid[r][c] not in ('S', 'E'):
         grid[r][c] = '.'
     print_grid(grid)
-    time.sleep(0.3)
+    time.sleep(0.1)
 
 
 # ---------------------------------------------------------

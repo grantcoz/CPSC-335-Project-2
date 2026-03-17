@@ -206,7 +206,7 @@ def main():
     cols = int(inputCols)
     maze = generate_solvable_maze(rows, cols)
 
-    #print("Generated Maze:")
+    print("Generated Maze:")
     #print_grid(maze)
 
     print("Solving...\n")
@@ -221,7 +221,7 @@ def main():
     print("Visited cells:", visited_count)
     print("Runtime:", runtime)
 
-    return
+    return visited_count, runtime
 
     #print("\nRunning tests...")
     #test_correctness()

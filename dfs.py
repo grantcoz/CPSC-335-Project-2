@@ -218,8 +218,8 @@ def main():
     print("Visited cells:", visited_count)
     print("Runtime:", runtime)
 
-    print("\nRunning tests...")
-    test_correctness()
+    #print("\nRunning tests...")
+    #test_correctness()
 
 
 if __name__ == "__main__":

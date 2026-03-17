@@ -1,27 +1,25 @@
 """
 gui.py
 
-Tkinter GUI for visualizing and solving mazes with BFS and DFS.
+Tkinter-based GUI for solving mazes with BFS or DFS.
 
-Features:
-    - Choose BFS or DFS
-    - Load a built-in sample maze
-    - Load a maze from a .txt file
-    - Generate a random maze
-    - Animate search exploration step-by-step
-    - Zoom in/out
-    - Scroll and pan across large mazes
-    - Show solving statistics:
-        * algorithm used
-        * path length
-        * visited/explored cells
-        * runtime
+This application allows the user to:
+    - Load a maze from a text file
+    - Generate a random maze of adjustable size
+    - Choose BFS or DFS as the solving algorithm
+    - Solve the maze and display the final path
+    - Optionally animate the search process
+    - Zoom in and out on the maze display
 
-Maze symbols:
-    S = start
-    E = end
-    # = wall
-    . = open path
+Maze symbol rules:
+    S = Start cell
+    E = End/Exit cell
+    # = Wall (blocked)
+    . = Open path (walkable)
+
+Expected solver behavior:
+    - BFS should return a shortest path in number of steps
+    - DFS should return a valid path if one exists
 """
 
 import tkinter as tk
@@ -30,8 +28,11 @@ import random
 from collections import deque
 import time
 
-# Default drawing sizes for maze cells.
+
+# Default drawing size for each maze cell in pixels.
 CELL_SIZE = 30
+
+# Limits for zooming.
 MIN_CELL_SIZE = 10
 MAX_CELL_SIZE = 60
 
@@ -40,131 +41,97 @@ class MazeApp:
     """
     Main GUI application class for the maze solver.
 
-    This class handles:
-        - window setup
-        - control widgets
-        - maze loading/generation
-        - solving with BFS/DFS
-        - animation
-        - drawing the maze on a canvas
+    This class is responsible for:
+        - building the Tkinter interface
+        - loading and generating mazes
+        - validating maze input
+        - solving mazes using BFS or DFS
+        - animating search progress
+        - drawing the maze and solution path
     """
 
     def __init__(self, root):
         """
-        Initialize the GUI application state and build the interface.
+        Initialize the application window and state.
 
         Args:
-            root (tk.Tk): The main Tkinter window.
+            root (tk.Tk): The main Tkinter root window.
         """
         self.root = root
         self.root.title("Maze Solver - BFS / DFS")
 
-        # Maze data structures.
-        self.maze = []          # Current maze grid
-        self.path = []          # Final solved path
-        self.explored = []      # Order of explored cells for animation
+        # Maze data currently loaded in the GUI.
+        self.maze = []
 
-        # View and animation state.
+        # Final solution path returned by BFS or DFS.
+        self.path = []
+
+        # Cells explored during the search, used for optional animation.
+        self.explored = []
+
+        # Current cell size for zooming.
         self.current_cell_size = CELL_SIZE
-        self.pan_start = None
+
+        # Animation control flags.
         self.animating = False
         self.after_id = None
 
-        # Built-in sample mazes.
-        self.samples = {
-            "Sample 1": [
-                "##########",
-                "#S...#...#",
-                "#.##.#.#.#",
-                "#....#.#E#",
-                "##########"
-            ],
-            "Sample 2": [
-                "############",
-                "#S....#....#",
-                "###.#.#.##.#",
-                "#...#...#..#",
-                "#.#####.#.##",
-                "#.......#E.#",
-                "############"
-            ],
-            "Sample 3": [
-                "###############",
-                "#S..#.........#",
-                "#.#.#.#######.#",
-                "#.#...#.....#.#",
-                "#.#####.###.#.#",
-                "#.....#...#...#",
-                "###.#.###.###.#",
-                "#...#.....#..E#",
-                "###############"
-            ]
-        }
-
-        # Tkinter state variables connected to UI controls.
+        # Tkinter variables connected to UI widgets.
         self.algorithm_var = tk.StringVar(value="BFS")
-        self.sample_var = tk.StringVar(value="Sample 1")
         self.size_var = tk.IntVar(value=12)
         self.animate_var = tk.BooleanVar(value=True)
         self.speed_var = tk.IntVar(value=30)  # milliseconds per animation step
 
-        # Build the user interface and load the default sample maze.
+        # Build all widgets.
         self.build_ui()
-        self.load_sample_maze()
 
     def build_ui(self):
-        """
-        Create all GUI widgets:
-            - algorithm selection controls
-            - maze loading/generation controls
-            - animation controls
-            - zoom controls
-            - stats label
-            - scrollable drawing canvas
-        """
         control_frame = tk.Frame(self.root, padx=10, pady=10)
         control_frame.pack(side=tk.TOP, fill=tk.X)
 
-        # Algorithm selection.
+        # ---------------- Row 0: Algorithm + File ----------------
         tk.Label(control_frame, text="Algorithm:").grid(row=0, column=0, sticky="w")
+
         tk.Radiobutton(control_frame, text="BFS", variable=self.algorithm_var, value="BFS").grid(row=0, column=1, sticky="w")
         tk.Radiobutton(control_frame, text="DFS", variable=self.algorithm_var, value="DFS").grid(row=0, column=2, sticky="w")
 
-        # Sample maze selection.
-        tk.Label(control_frame, text="Samples:").grid(row=0, column=3, padx=(20, 5), sticky="w")
-        sample_menu = tk.OptionMenu(control_frame, self.sample_var, *self.samples.keys())
-        sample_menu.grid(row=0, column=4, sticky="w")
+        tk.Button(control_frame, text="Load .txt File", command=self.load_maze_from_file)\
+            .grid(row=0, column=3, padx=15)
 
-        tk.Button(control_frame, text="Load Sample", command=self.load_sample_maze).grid(row=0, column=5, padx=5)
-        tk.Button(control_frame, text="Load .txt File", command=self.load_maze_from_file).grid(row=0, column=6, padx=5)
+        # ---------------- Row 1: Maze Generation ----------------
+        tk.Label(control_frame, text="Random Size:").grid(row=1, column=0, pady=10, sticky="w")
 
-        # Random maze generation.
-        tk.Label(control_frame, text="Grid Size:").grid(row=1, column=0, pady=(10, 0), sticky="w")
-        tk.Spinbox(control_frame, from_=8, to=50, textvariable=self.size_var, width=5).grid(row=1, column=1, pady=(10, 0), sticky="w")
-        tk.Button(control_frame, text="Generate Random Maze", command=self.generate_random_maze).grid(row=1, column=2, columnspan=2, pady=(10, 0), padx=5)
+        tk.Spinbox(control_frame, from_=8, to=30, textvariable=self.size_var, width=5)\
+            .grid(row=1, column=1, pady=10, sticky="w")
 
-        # Solve and clear controls.
-        tk.Button(control_frame, text="Solve", command=self.solve_maze, bg="lightgreen").grid(row=1, column=5, pady=(10, 0), padx=5)
-        tk.Button(control_frame, text="Clear Path", command=self.clear_path).grid(row=1, column=6, pady=(10, 0), padx=5)
+        tk.Button(control_frame, text="Generate Random Maze", command=self.generate_random_maze)\
+            .grid(row=1, column=2, columnspan=2, pady=10, padx=10)
 
-        # Animation settings.
-        tk.Checkbutton(control_frame, text="Animate Search", variable=self.animate_var).grid(row=2, column=0, columnspan=2, pady=(10, 0), sticky="w")
-        tk.Label(control_frame, text="Speed:").grid(row=2, column=2, pady=(10, 0), sticky="e")
-        tk.Scale(
-            control_frame,
-            from_=1,
-            to=200,
-            orient=tk.HORIZONTAL,
-            variable=self.speed_var,
-            length=160,
-            label="ms/step"
-        ).grid(row=2, column=3, columnspan=2, pady=(10, 0), sticky="w")
+        # ---------------- Row 2: Solve Controls ----------------
+        tk.Button(control_frame, text="Solve", command=self.solve_maze, bg="lightgreen")\
+            .grid(row=2, column=1, pady=5, padx=5)
 
-        # Zoom controls.
-        tk.Button(control_frame, text="Zoom +", command=self.zoom_in).grid(row=2, column=5, pady=(10, 0), padx=5)
-        tk.Button(control_frame, text="Zoom -", command=self.zoom_out).grid(row=2, column=6, pady=(10, 0), padx=5)
+        tk.Button(control_frame, text="Clear Path", command=self.clear_path)\
+            .grid(row=2, column=2, pady=5, padx=5)
 
-        # Stats label shown below controls.
+        # ---------------- Row 3: Animation ----------------
+        tk.Checkbutton(control_frame, text="Animate Search", variable=self.animate_var)\
+            .grid(row=3, column=0, pady=10, sticky="w")
+
+        tk.Label(control_frame, text="Speed:").grid(row=3, column=1, sticky="e")
+
+        tk.Scale(control_frame, from_=1, to=200, orient=tk.HORIZONTAL,
+                variable=self.speed_var, length=200)\
+            .grid(row=3, column=2, columnspan=2, sticky="w")
+
+        # ---------------- Row 4: Zoom ----------------
+        tk.Button(control_frame, text="Zoom +", command=self.zoom_in)\
+            .grid(row=4, column=1, pady=10)
+
+        tk.Button(control_frame, text="Zoom -", command=self.zoom_out)\
+            .grid(row=4, column=2, pady=10)
+
+        # ---------------- Stats ----------------
         self.stats_label = tk.Label(
             self.root,
             text="Load a maze and click Solve.",
@@ -174,7 +141,7 @@ class MazeApp:
         )
         self.stats_label.pack(fill=tk.X)
 
-        # Canvas frame with scrollbars.
+        # ---------------- Canvas ----------------
         canvas_frame = tk.Frame(self.root)
         canvas_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
@@ -192,98 +159,56 @@ class MazeApp:
         )
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # Connect scrollbars to the canvas.
         self.v_scroll.config(command=self.canvas.yview)
         self.h_scroll.config(command=self.canvas.xview)
 
-        # Mouse wheel scrolling.
-        self.canvas.bind("<MouseWheel>", self._on_mousewheel)
-        self.canvas.bind("<Shift-MouseWheel>", self._on_shift_mousewheel)
-
-        # Mouse drag panning.
-        self.canvas.bind("<ButtonPress-1>", self.start_pan)
-        self.canvas.bind("<B1-Motion>", self.do_pan)
-
     def cancel_animation(self):
         """
-        Cancel any currently scheduled animation step.
+        Cancel any scheduled animation callback.
 
-        This prevents overlapping animations if the user loads a new maze,
-        generates a new one, or solves again before the previous animation
-        is finished.
+        This is useful when:
+            - loading a new maze
+            - generating a new maze
+            - clearing the path
+            - solving again before a previous animation is finished
         """
         if self.after_id is not None:
             self.root.after_cancel(self.after_id)
             self.after_id = None
         self.animating = False
 
-    def _on_mousewheel(self, event):
-        """
-        Scroll vertically using the mouse wheel.
-
-        Args:
-            event: Tkinter mouse wheel event.
-        """
-        self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-
-    def _on_shift_mousewheel(self, event):
-        """
-        Scroll horizontally using Shift + mouse wheel.
-
-        Args:
-            event: Tkinter mouse wheel event.
-        """
-        self.canvas.xview_scroll(int(-1 * (event.delta / 120)), "units")
-
-    def start_pan(self, event):
-        """
-        Mark the starting point for click-and-drag panning.
-
-        Args:
-            event: Tkinter mouse event.
-        """
-        self.canvas.scan_mark(event.x, event.y)
-
-    def do_pan(self, event):
-        """
-        Drag the canvas view while the left mouse button is held.
-
-        Args:
-            event: Tkinter mouse event.
-        """
-        self.canvas.scan_dragto(event.x, event.y, gain=1)
-
     def zoom_in(self):
         """
-        Increase the size of each maze cell, up to MAX_CELL_SIZE.
+        Increase the size of drawn maze cells, up to MAX_CELL_SIZE.
         """
         self.current_cell_size = min(MAX_CELL_SIZE, self.current_cell_size + 5)
         self.draw_maze()
 
     def zoom_out(self):
         """
-        Decrease the size of each maze cell, down to MIN_CELL_SIZE.
+        Decrease the size of drawn maze cells, down to MIN_CELL_SIZE.
         """
         self.current_cell_size = max(MIN_CELL_SIZE, self.current_cell_size - 5)
         self.draw_maze()
 
     def validate_maze(self, maze):
         """
-        Validate that a maze is well-formed.
+        Validate that the maze follows the assignment rules.
 
-        Rules checked:
-            - maze is not empty
-            - all rows are the same length
-            - only valid symbols are used
-            - exactly one S and one E exist
+        A valid maze must:
+            - not be empty
+            - have equal row lengths
+            - contain only S, E, #, .
+            - contain exactly one S
+            - contain exactly one E
 
         Args:
-            maze (list[str] or list[list[str]]): Maze data to validate.
+            maze (list[str] or list[list[str]]): Maze rows to validate.
 
         Returns:
             tuple[bool, str]:
-                (True, "") if valid
-                (False, error_message) if invalid
+                - True and empty message if valid
+                - False and error message if invalid
         """
         if not maze:
             return False, "Maze is empty."
@@ -295,9 +220,11 @@ class MazeApp:
         for row in maze:
             if len(row) != row_length:
                 return False, "Maze rows must all be the same length."
+
             for cell in row:
                 if cell not in {'S', 'E', '#', '.'}:
                     return False, "Maze contains invalid characters."
+
                 if cell == 'S':
                     start_count += 1
                 elif cell == 'E':
@@ -308,27 +235,10 @@ class MazeApp:
 
         return True, ""
 
-    def load_sample_maze(self):
-        """
-        Load the currently selected built-in sample maze into the GUI.
-        """
-        self.cancel_animation()
-
-        maze_lines = self.samples[self.sample_var.get()]
-        valid, msg = self.validate_maze(maze_lines)
-        if not valid:
-            messagebox.showerror("Invalid Maze", msg)
-            return
-
-        self.maze = [list(row) for row in maze_lines]
-        self.path = []
-        self.explored = []
-        self.draw_maze()
-        self.stats_label.config(text=f"Loaded {self.sample_var.get()}")
-
     def load_maze_from_file(self):
         """
-        Load a maze from a text file selected by the user.
+        Open a file picker, load a maze from a .txt file, validate it,
+        and display it on the canvas.
         """
         self.cancel_animation()
 
@@ -350,6 +260,7 @@ class MazeApp:
             self.explored = []
             self.draw_maze()
             self.stats_label.config(text=f"Loaded maze from file: {file_path}")
+
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
@@ -357,12 +268,16 @@ class MazeApp:
         """
         Generate a random maze of the selected size.
 
-        Notes:
-            - Borders are turned into walls.
-            - Internal cells are randomly assigned walls with probability 0.28.
-            - S is placed near the top-left.
-            - E is placed near the bottom-right.
-            - Cells around S and E are opened to reduce immediate trapping.
+        Behavior:
+            - border cells become walls
+            - interior cells become walls with probability 0.28
+            - start is placed at (1, 1)
+            - end is placed at (size - 2, size - 2)
+            - nearby cells around start/end are opened for a better chance
+              of solvability
+
+        Note:
+            This does not guarantee the maze is solvable.
         """
         self.cancel_animation()
 
@@ -377,17 +292,17 @@ class MazeApp:
             maze[0][c] = '#'
             maze[size - 1][c] = '#'
 
-        # Randomly place internal walls.
+        # Randomly place interior walls.
         for r in range(1, size - 1):
             for c in range(1, size - 1):
                 if random.random() < 0.28:
                     maze[r][c] = '#'
 
-        # Place start and end.
+        # Place start and end cells.
         maze[1][1] = 'S'
         maze[size - 2][size - 2] = 'E'
 
-        # Open a few nearby cells around start and end.
+        # Open nearby cells around S and E to reduce immediate trapping.
         for rr, cc in [(1, 2), (2, 1), (size - 2, size - 3), (size - 3, size - 2)]:
             if 0 <= rr < size and 0 <= cc < size:
                 maze[rr][cc] = '.'
@@ -401,7 +316,7 @@ class MazeApp:
     def clear_path(self):
         """
         Clear the currently displayed path and explored cells,
-        then redraw the maze in its unsolved state.
+        then redraw the original maze layout.
         """
         self.cancel_animation()
         self.path = []
@@ -411,15 +326,15 @@ class MazeApp:
 
     def find_start_end(self, grid):
         """
-        Find the start and end cells inside a maze grid.
+        Find the start and end coordinates in the given maze grid.
 
         Args:
             grid (list[list[str]]): Maze grid.
 
         Returns:
             tuple:
-                start (row, col) or None
-                end (row, col) or None
+                start (tuple[int, int] or None)
+                end (tuple[int, int] or None)
         """
         start = None
         end = None
@@ -437,15 +352,12 @@ class MazeApp:
         """
         Reconstruct a path from a parent dictionary.
 
-        The parent dictionary maps each discovered node to the node
-        from which it was first reached.
-
         Args:
-            parent (dict): child -> parent map
-            end (tuple[int, int]): End cell
+            parent (dict): Maps each cell to the cell it came from.
+            end (tuple[int, int]): End cell.
 
         Returns:
-            list[tuple[int, int]]: Path from start to end.
+            list[tuple[int, int]]: Reconstructed path from start to end.
         """
         path = []
         cur = end
@@ -459,8 +371,10 @@ class MazeApp:
 
     def run_bfs_with_trace(self):
         """
-        Run BFS directly inside the GUI and also record exploration order
-        for animation.
+        Solve the current maze using BFS and record the order of exploration.
+
+        BFS uses a queue and guarantees the shortest path in number of steps
+        in an unweighted grid.
 
         Returns:
             tuple:
@@ -477,11 +391,19 @@ class MazeApp:
 
         start_time = time.perf_counter()
 
+        # BFS queue starts with the start cell.
         q = deque([start])
+
+        # Track discovered cells so they are not added multiple times.
         visited = {start}
+
+        # Parent map for path reconstruction.
         parent = {start: None}
+
+        # Order in which nodes are expanded, used for animation.
         explored_order = []
 
+        # 4-direction movement only.
         dirs = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 
         while q:
@@ -494,6 +416,7 @@ class MazeApp:
 
             for dr, dc in dirs:
                 nr, nc = r + dr, c + dc
+
                 if 0 <= nr < rows and 0 <= nc < cols:
                     if self.maze[nr][nc] != '#' and (nr, nc) not in visited:
                         visited.add((nr, nc))
@@ -505,8 +428,11 @@ class MazeApp:
 
     def run_dfs_with_trace(self):
         """
-        Run recursive DFS directly inside the GUI and record exploration
-        order for animation.
+        Solve the current maze using recursive DFS and record the order
+        of exploration.
+
+        DFS does not guarantee the shortest path, but it should return
+        a valid path if one exists.
 
         Returns:
             tuple:
@@ -524,20 +450,21 @@ class MazeApp:
         visited = set()
         path = []
         explored_order = []
+
         start_time = time.perf_counter()
 
         dirs = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 
         def dfs(r, c):
             """
-            Recursive DFS helper.
+            Recursive helper function for DFS.
 
             Args:
                 r (int): Current row.
                 c (int): Current column.
 
             Returns:
-                bool: True if a path to E is found from this cell.
+                bool: True if the end is found from this cell, else False.
             """
             visited.add((r, c))
             explored_order.append((r, c))
@@ -548,12 +475,13 @@ class MazeApp:
 
             for dr, dc in dirs:
                 nr, nc = r + dr, c + dc
+
                 if 0 <= nr < rows and 0 <= nc < cols:
                     if self.maze[nr][nc] != '#' and (nr, nc) not in visited:
                         if dfs(nr, nc):
                             return True
 
-            # Remove dead-end cell when backtracking.
+            # Backtrack: remove current cell from the attempted path.
             path.pop()
             return False
 
@@ -566,10 +494,11 @@ class MazeApp:
         """
         Solve the currently loaded maze using the selected algorithm.
 
-        Behavior:
-            - clears previous solution/animation
-            - runs BFS or DFS
-            - either animates exploration or draws final result immediately
+        Flow:
+            1. Clear previous animation/path
+            2. Run BFS or DFS
+            3. Animate search if enabled
+            4. Otherwise draw final result immediately
         """
         if not self.maze:
             messagebox.showwarning("No Maze", "Please load or generate a maze first.")
@@ -609,16 +538,17 @@ class MazeApp:
 
     def animate_exploration(self, explored_order, final_path, algorithm, visited_count, runtime_ms, index):
         """
-        Animate the search process one explored cell at a time using Tkinter's
-        after() scheduler.
+        Animate the search process one explored cell at a time.
+
+        Uses Tkinter's after() so the GUI remains responsive.
 
         Args:
-            explored_order (list[tuple[int, int]]): Order cells were explored.
-            final_path (list[tuple[int, int]]): Final solved path.
+            explored_order (list[tuple[int, int]]): Cells visited in order.
+            final_path (list[tuple[int, int]]): Final solution path.
             algorithm (str): "BFS" or "DFS"
             visited_count (int): Number of visited cells.
             runtime_ms (float): Runtime in milliseconds.
-            index (int): Current animation frame index.
+            index (int): Current frame index in the animation.
         """
         if index >= len(explored_order):
             self.explored = explored_order
@@ -650,10 +580,10 @@ class MazeApp:
         Update the stats label after solving.
 
         Args:
-            algorithm (str): "BFS" or "DFS"
-            path (list[tuple[int, int]]): Final path
-            visited_count (int): Number of explored cells
-            runtime_ms (float): Runtime in milliseconds
+            algorithm (str): Algorithm name used.
+            path (list[tuple[int, int]]): Final path found.
+            visited_count (int): Number of visited/explored cells.
+            runtime_ms (float): Runtime in milliseconds.
         """
         if path:
             path_length = len(path) - 1
@@ -677,17 +607,15 @@ class MazeApp:
 
     def draw_maze(self):
         """
-        Draw the maze onto the canvas.
+        Draw the current maze, explored cells, and final path on the canvas.
 
-        Color scheme:
+        Color meaning:
             black      = wall
-            white      = open cell
+            white      = open path
             lightblue  = explored cell
-            yellow     = final path
+            yellow     = final solution path
             green      = start
             red        = end
-
-        The canvas uses the current zoom level stored in self.current_cell_size.
         """
         if not self.maze:
             return
@@ -713,8 +641,9 @@ class MazeApp:
 
                 cell = self.maze[r][c]
 
-                # Base coloring.
+                # Base color for open cells.
                 color = "white"
+
                 if cell == '#':
                     color = "black"
                 elif (r, c) in explored_set:
@@ -724,15 +653,19 @@ class MazeApp:
                 if (r, c) in path_set:
                     color = "yellow"
 
-                # Start and end override everything else for clarity.
+                # Start and end override all other colors.
                 if cell == 'S':
                     color = "green"
                 elif cell == 'E':
                     color = "red"
 
-                self.canvas.create_rectangle(x1, y1, x2, y2, fill=color, outline="gray")
+                self.canvas.create_rectangle(
+                    x1, y1, x2, y2,
+                    fill=color,
+                    outline="gray"
+                )
 
-                # Draw labels for start and end.
+                # Draw S and E labels in the center of their cells.
                 if cell in ('S', 'E'):
                     font_size = max(8, self.current_cell_size // 3)
                     self.canvas.create_text(
@@ -745,7 +678,12 @@ class MazeApp:
 
 
 if __name__ == "__main__":
-    # Create the main application window and start the Tkinter event loop.
+    """
+    Program entry point.
+
+    Creates the Tkinter root window, instantiates the MazeApp,
+    and starts the event loop.
+    """
     root = tk.Tk()
     root.geometry("1000x700")
     app = MazeApp(root)

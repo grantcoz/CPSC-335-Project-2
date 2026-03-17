@@ -99,9 +99,9 @@ class MazeApp:
             .grid(row=0, column=3, padx=15)
 
         # ---------------- Row 1: Maze Generation ----------------
-        tk.Label(control_frame, text="Random Size:").grid(row=1, column=0, pady=10, sticky="w")
+        tk.Label(control_frame, text="Grid Size:").grid(row=1, column=0, pady=10, sticky="w")
 
-        tk.Spinbox(control_frame, from_=8, to=30, textvariable=self.size_var, width=5)\
+        tk.Spinbox(control_frame, from_=8, to=100, textvariable=self.size_var, width=5)\
             .grid(row=1, column=1, pady=10, sticky="w")
 
         tk.Button(control_frame, text="Generate Random Maze", command=self.generate_random_maze)\

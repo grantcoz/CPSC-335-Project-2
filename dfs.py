@@ -200,11 +200,14 @@ def test_correctness():
 # ---------------------------------------------------------
 
 def main():
-    rows, cols = 8, 8
+    inputRows = input("Enter rows: ")
+    inputCols = input("Enter Columns: ")
+    rows = int(inputRows)
+    cols = int(inputCols)
     maze = generate_solvable_maze(rows, cols)
 
-    print("Generated Maze:")
-    print_grid(maze)
+    #print("Generated Maze:")
+    #print_grid(maze)
 
     print("Solving...\n")
     path, visited_count, runtime = solve_dfs(maze)
@@ -217,6 +220,8 @@ def main():
 
     print("Visited cells:", visited_count)
     print("Runtime:", runtime)
+
+    return
 
     #print("\nRunning tests...")
     #test_correctness()

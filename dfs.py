@@ -200,29 +200,37 @@ def test_correctness():
 # ---------------------------------------------------------
 
 def main():
-    inputRows = input("Enter rows: ")
-    inputCols = input("Enter Columns: ")
-    rows = int(inputRows)
-    cols = int(inputCols)
-    maze = generate_solvable_maze(rows, cols)
+    print("\nMenu:")
+    print("1. Generate random map")
+    print("2. Quit")
+    while True:
+        choice = input("Enter Your Choice: ").upper()
+        if choice == '1':
+            inputRows = input("Enter rows: ")
+            inputCols = input("Enter Columns: ")
+            rows = int(inputRows)
+            cols = int(inputCols)
+            maze = generate_solvable_maze(rows, cols)
 
-    print("Generated Maze:")
-    #print_grid(maze)
+            print("Generated Maze:")
+            #print_grid(maze)
 
-    print("Solving...\n")
-    path, visited_count, runtime = solve_dfs(maze)
+            print("Solving...\n")
+            path, visited_count, runtime = solve_dfs(maze)
 
-    if path:
-        print("Path found!")
-        print("Path length:", len(path))
-    else:
-        print("No path exists.")
+            if path:
+                print("Path found!")
+                print("Path length:", len(path))
+            else:
+                print("No path exists.")
 
-    print("Visited cells:", visited_count)
-    print("Runtime:", runtime)
-
-    return visited_count, runtime
-
+            print("Visited cells:", visited_count)
+            print("Runtime:", runtime)
+            continue
+        elif choice == '2':
+            break
+        else:
+            "Invalid choice, try again"
     #print("\nRunning tests...")
     #test_correctness()
 

@@ -1,231 +1,118 @@
-import random
 import time
-from typing import List, Tuple, Optional, Set
+from typing import List, Tuple, Set, Optional, Callable
 
-# ---------------------------------------------------------
-# Maze Generation
-# ---------------------------------------------------------
+Cell = Tuple[int, int]
+Grid = List[List[str]]
 
-def generate_maze(rows: int, cols: int, wall_prob: float = 0.3) -> List[List[str]]:
-    """
-    Generate a random maze using ASCII symbols.
-    'X' = wall
-    '*' = free space
-    'S' = start
-    'E' = end
-    """
-    grid = []
-    for _ in range(rows):
-        row = ['X' if random.random() < wall_prob else '*' for _ in range(cols)]
-        grid.append(row)
-
-    grid[0][0] = 'S'
-    grid[rows - 1][cols - 1] = 'E'
-    return grid
+DIRS = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # Up, Down, Left, Right
 
 
 # ---------------------------------------------------------
-# Visualization (Console)
+# Helpers
 # ---------------------------------------------------------
 
-def print_grid(grid: List[List[str]]):
+def find_start_end(grid: Grid) -> Tuple[Optional[Cell], Optional[Cell]]:
+    start = None
+    end = None
+
+    for r in range(len(grid)):
+        for c in range(len(grid[0])):
+            if grid[r][c] == 'S':
+                start = (r, c)
+            elif grid[r][c] == 'E':
+                end = (r, c)
+
+    return start, end
+
+
+def print_grid(grid: Grid):
     for row in grid:
         print("".join(row))
     print()
 
 
-def visualize_step(grid: List[List[str]], r: int, c: int):
+def visualize_step(grid: Grid, r: int, c: int, delay: float = 0.0):
     """
-    Mark the current DFS exploration step.
-    GUI version will replace this with drawing logic.
+    Optional console visualization.
+    For GUI use, keep delay=0.0 and avoid mutating the original maze.
     """
-    if grid[r][c] not in ('S', 'E'):
+    if grid[r][c] not in ('S', 'E', '#'):
         grid[r][c] = '.'
     print_grid(grid)
-    time.sleep(0.3)
+    if delay > 0:
+        time.sleep(delay)
 
 
 # ---------------------------------------------------------
-# DFS Solver (Recursive)
+# DFS Solver (Recursive + GUI-safe)
 # ---------------------------------------------------------
 
-DIRS = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # Up, Down, Left, Right
-
-def solve_dfs(grid: List[List[str]]):
+def solve_dfs(
+    grid: Grid,
+    visualize: bool = False,
+    delay: float = 0.0,
+    step_callback: Optional[Callable[[int, int], None]] = None,
+) -> Tuple[List[Cell], int, float]:
     """
     Solve the maze using recursive DFS.
+
+    Maze symbols expected:
+        '#' = wall
+        '.' = open
+        'S' = start
+        'E' = end
+
     Returns:
-        path: list of (r, c) coordinates from S to E
-        visited_count: number of visited cells
-        runtime: time in seconds
+        path: list of (row, col) cells from S to E
+        visited_count: number of explored cells
+        runtime_ms: runtime in milliseconds
     """
+    if not grid or not grid[0]:
+        return [], 0, 0.0
+
     rows, cols = len(grid), len(grid[0])
+    start, end = find_start_end(grid)
 
-    # Locate start
-    start = None
-    for r in range(rows):
-        for c in range(cols):
-            if grid[r][c] == 'S':
-                start = (r, c)
-                break
-        if start:
-            break
+    if start is None or end is None:
+        raise ValueError("Maze must contain exactly one S and one E")
 
-    visited: Set[Tuple[int, int]] = set()
-    path: List[Tuple[int, int]] = []
+    visited: Set[Cell] = set()
+    path: List[Cell] = []
 
-    start_time = time.time()
+    # Make a copy only if doing console visualization
+    vis_grid = [row[:] for row in grid] if visualize else None
+
+    start_time = time.perf_counter()
 
     def dfs(r: int, c: int) -> bool:
         visited.add((r, c))
         path.append((r, c))
 
-        visualize_step(grid, r, c)
+        if visualize and vis_grid is not None:
+            visualize_step(vis_grid, r, c, delay)
 
-        if grid[r][c] == 'E':
+        if step_callback is not None:
+            step_callback(r, c)
+
+        if (r, c) == end:
             return True
 
         for dr, dc in DIRS:
             nr, nc = r + dr, c + dc
+
             if 0 <= nr < rows and 0 <= nc < cols:
-                if grid[nr][nc] != 'X' and (nr, nc) not in visited:
+                if grid[nr][nc] != '#' and (nr, nc) not in visited:
                     if dfs(nr, nc):
                         return True
 
-        # Backtrack
+        # backtrack if dead end
         path.pop()
         return False
 
     found = dfs(start[0], start[1])
-    runtime = time.time() - start_time
+    runtime_ms = (time.perf_counter() - start_time) * 1000
 
     if not found:
-        return [], len(visited), runtime
+        return [], len(visited), runtime_ms
 
-    return path, len(visited), runtime
-
-def generate_solvable_maze(rows: int, cols: int) -> List[List[str]]:
-    """
-    Generate a guaranteed-solvable maze using recursive backtracking.
-    'X' = wall
-    '*' = free space
-    'S' = start
-    'E' = end
-    """
-
-    # Start with all walls
-    maze = [['X' for _ in range(cols)] for _ in range(rows)]
-
-    # Directions for carving (randomized)
-    directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
-
-    def carve(r: int, c: int):
-        maze[r][c] = '*'
-        random.shuffle(directions)
-
-        for dr, dc in directions:
-            nr, nc = r + dr, c + dc
-            if 0 <= nr < rows and 0 <= nc < cols:
-                if maze[nr][nc] == 'X':
-                    # Count open neighbors to avoid loops
-                    open_neighbors = 0
-                    for rr, cc in directions:
-                        ar, ac = nr + rr, nc + cc
-                        if 0 <= ar < rows and 0 <= ac < cols:
-                            if maze[ar][ac] == '*':
-                                open_neighbors += 1
-                    if open_neighbors <= 1:
-                        carve(nr, nc)
-
-    # Carve from start
-    carve(0, 0)
-
-    # Ensure end is reachable
-    maze[rows - 1][cols - 1] = '*'
-
-    # Place S and E
-    maze[0][0] = 'S'
-    maze[rows - 1][cols - 1] = 'E'
-
-    return maze
-
-# ---------------------------------------------------------
-# Correctness Tests
-# ---------------------------------------------------------
-
-def test_correctness():
-    print("Running correctness tests...\n")
-
-    # 1. Start == End (1x1)
-    grid = [['S']]
-    path, visited, rt = solve_dfs([['S']])
-    print("✓ Start == End test passed")
-
-    # 2. Fully blocked maze
-    grid = [['S', 'X'], ['X', 'E']]
-    path, visited, rt = solve_dfs(grid)
-    assert path == []
-    print("✓ Fully blocked maze test passed")
-
-    # 3. Fully open maze
-    grid = [['S', '*'], ['*', 'E']]
-    path, visited, rt = solve_dfs(grid)
-    assert path[-1] == (1, 1)
-    print("✓ Fully open maze test passed")
-
-    # 4. No path exists
-    grid = [
-        ['S', 'X', 'E'],
-        ['X', 'X', 'X'],
-        ['*', '*', '*']
-    ]
-    path, visited, rt = solve_dfs(grid)
-    assert path == []
-    print("✓ No path test passed")
-
-    # 5. Small 2×2 solvable
-    grid = [
-        ['S', '*'],
-        ['X', 'E']
-    ]
-    path, visited, rt = solve_dfs(grid)
-    assert path[-1] == (1, 1)
-    print("✓ 2×2 solvable test passed")
-
-    print("\nAll tests passed!")
-
-
-# ---------------------------------------------------------
-# Main Runner
-# ---------------------------------------------------------
-
-def main():
-    inputRows = input("Enter rows: ")
-    inputCols = input("Enter Columns: ")
-    rows = int(inputRows)
-    cols = int(inputCols)
-    maze = generate_solvable_maze(rows, cols)
-
-    print("Generated Maze:")
-    #print_grid(maze)
-
-    print("Solving...\n")
-    path, visited_count, runtime = solve_dfs(maze)
-
-    if path:
-        print("Path found!")
-        print("Path length:", len(path))
-    else:
-        print("No path exists.")
-
-    print("Visited cells:", visited_count)
-    print("Runtime:", runtime)
-
-    return visited_count, runtime
-
-    #print("\nRunning tests...")
-    #test_correctness()
-
-
-if __name__ == "__main__":
-    main()
+    return path, len(visited), runtime_ms
